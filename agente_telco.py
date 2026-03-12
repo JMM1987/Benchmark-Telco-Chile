@@ -4,36 +4,38 @@ import datetime
 
 async def scraping_wom():
     async with async_playwright() as p:
-        # Lanzamos el navegador
+        # Iniciamos el navegador
         browser = await p.chromium.launch(headless=True)
-        # Nos hacemos pasar por un usuario real para evitar bloqueos
+        # Creamos un contexto que imita a un computador real en Chile
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={'width': 1920, 'height': 1080}
         )
         page = await context.new_page()
         
-        print(f"[{datetime.datetime.now()}] Iniciando visita a WOM...")
+        print(f"[{datetime.datetime.now()}] Intentando entrar a WOM...")
         
         try:
-            # Vamos a la sección de planes
-            await page.goto("https://www.wom.cl/planes/", timeout=60000)
+            # Vamos directamente a la página de planes de fibra o móvil
+            # Probemos con fibra esta vez que suele ser más estable para el robot
+            await page.goto("https://www.wom.cl/hogar/internet-fibra-optica/", wait_until="networkidle", timeout=60000)
             
-            # Esperamos a que carguen los precios (usamos un selector común en WOM)
-            await page.wait_for_selector(".price", timeout=10000)
+            # En lugar de buscar ".price", buscaremos cualquier texto que tenga un "$"
+            # Esto es mucho más robusto
+            await page.wait_for_selector("text=$", timeout=20000)
             
-            # Extraemos todos los precios que encuentre en la página
-            precios = await page.locator(".price").all_inner_texts()
-            # Extraemos los nombres de los planes
-            planes = await page.locator("h3").all_inner_texts()
+            # Capturamos los precios (WOM usa etiquetas h2 o span para esto)
+            precios = await page.locator("text=$").all_inner_texts()
             
-            print("--- RESULTADOS ENCONTRADOS ---")
-            for plan, precio in zip(planes, precios):
-                print(f"Plan: {plan.strip()} | Precio: {precio.strip()}")
+            print("--- ¡ÉXITO! DATOS ENCONTRADOS ---")
+            for p in precios[:5]: # Solo mostramos los primeros 5 para probar
+                print(f"Precio detectado: {p.strip()}")
                 
         except Exception as e:
-            print(f"Ups! Algo falló: {e}")
-            # Guardamos una captura de pantalla si falla (puedes verla en GitHub Actions)
-            await page.screenshot(path="error_wom.png")
+            print(f"Error: No pudimos ver los precios. El sitio dice: {e}")
+            # Esto nos ayudará mucho: guarda una foto de lo que el robot ve
+            await page.screenshot(path="lo_que_ve_el_robot.png")
+            print("Captura de pantalla guardada como lo_que_ve_el_robot.png")
         finally:
             await browser.close()
 
