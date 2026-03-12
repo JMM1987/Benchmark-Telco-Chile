@@ -4,47 +4,51 @@ import google.generativeai as genai
 import os
 import datetime
 
-# Conectamos con la clave que guardaste en GitHub
 api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 
 async def ejecutar_agente_visual():
     async with async_playwright() as p:
-        # Lanzamos el navegador
         browser = await p.chromium.launch(headless=True)
-        # Ajustamos el tamaño de la ventana para ver todos los planes
-        context = await browser.new_context(viewport={'width': 1280, 'height': 1600})
+        # Aumentamos el alto de la captura para asegurar que capturemos las líneas adicionales abajo
+        context = await browser.new_context(viewport={'width': 1280, 'height': 2000})
         page = await context.new_page()
 
         print(f"[{datetime.datetime.now()}] Accediendo a Portabilidad WOM...")
-        
-        # URL PARAMETRIZADA AQUÍ:
         await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="networkidle")
         
-        # Esperamos un poco extra para que los precios carguen (a veces WOM es lenta)
-        await asyncio.sleep(7) 
+        # Esperamos a que carguen las "cards" de planes y adicionales
+        await asyncio.sleep(8) 
         
-        path_foto = "captura_wom_portabilidad.png"
+        path_foto = "captura_wom_detallada.png"
         await page.screenshot(path=path_foto, full_page=True)
         await browser.close()
 
         # --- PROCESAMIENTO CON IA ---
-        print("Enviando captura a Gemini para análisis visual...")
+        print("Enviando captura a Gemini para análisis financiero detallado...")
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Subimos la imagen a la IA
         foto = genai.upload_file(path_foto)
         
+        # Este prompt es mucho más técnico y específico
         prompt = """
-        Analiza esta imagen de la tienda WOM Chile.
-        Busca los cuadros de planes de PORTABILIDAD.
-        Extrae la información y entrégamela en una tabla con:
-        Empresa | Plan (Gigas) | Precio Oferta | Precio Normal | Atributo Diferenciador (ej: Roaming, Apps Libres)
+        Analiza esta imagen de WOM Chile y extrae los datos para un benchmark de precios profesional.
+        Necesito una tabla con las siguientes columnas para cada plan visible:
+        
+        1. Plan (Nombre/Gigas)
+        2. Valor Entrada (Precio con descuento inicial)
+        3. Meses de Descuento (Duración de la oferta)
+        4. Valor Aterrizaje (Precio final post-descuento)
+        5. Precio Línea Adicional (Entrada)
+        6. Meses Descuento Adicional
+        7. Aterrizaje Línea Adicional
+        8. Atributos (Roaming, Apps, etc.)
+
+        Si la información de líneas adicionales no está explícita para un plan, busca los banners inferiores donde WOM suele poner los precios de líneas extra.
         """
         
         response = model.generate_content([prompt, foto])
         
-        print("\n=== BENCHMARK PORTABILIDAD WOM ===")
+        print("\n=== BENCHMARK DETALLADO WOM PORTABILIDAD ===")
         print(response.text)
 
 if __name__ == "__main__":
