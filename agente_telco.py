@@ -1,43 +1,44 @@
 import asyncio
 from playwright.async_api import async_playwright
+import google.generativeai as genai
+import os
 import datetime
 
-async def scraping_wom():
+# Conectamos con la clave que guardaste en GitHub
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
+
+async def ejecutar_agente_visual():
     async with async_playwright() as p:
-        # Iniciamos el navegador
         browser = await p.chromium.launch(headless=True)
-        # Creamos un contexto que imita a un computador real en Chile
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={'width': 1920, 'height': 1080}
-        )
+        context = await browser.new_context(viewport={'width': 1280, 'height': 1200})
         page = await context.new_page()
+
+        print(f"[{datetime.datetime.now()}] Accediendo a WOM...")
+        await page.goto("https://www.wom.cl/planes/", wait_until="networkidle")
+        await asyncio.sleep(5) # Esperamos que carguen los elementos visuales
         
-        print(f"[{datetime.datetime.now()}] Intentando entrar a WOM...")
+        path_foto = "captura_wom.png"
+        await page.screenshot(path=path_foto)
+        await browser.close()
+
+        # --- PROCESAMIENTO CON IA ---
+        print("Enviando captura a Gemini para análisis visual...")
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        try:
-            # Vamos directamente a la página de planes de fibra o móvil
-            # Probemos con fibra esta vez que suele ser más estable para el robot
-            await page.goto("https://www.wom.cl/hogar/internet-fibra-optica/", wait_until="networkidle", timeout=60000)
-            
-            # En lugar de buscar ".price", buscaremos cualquier texto que tenga un "$"
-            # Esto es mucho más robusto
-            await page.wait_for_selector("text=$", timeout=20000)
-            
-            # Capturamos los precios (WOM usa etiquetas h2 o span para esto)
-            precios = await page.locator("text=$").all_inner_texts()
-            
-            print("--- ¡ÉXITO! DATOS ENCONTRADOS ---")
-            for p in precios[:5]: # Solo mostramos los primeros 5 para probar
-                print(f"Precio detectado: {p.strip()}")
-                
-        except Exception as e:
-            print(f"Error: No pudimos ver los precios. El sitio dice: {e}")
-            # Esto nos ayudará mucho: guarda una foto de lo que el robot ve
-            await page.screenshot(path="lo_que_ve_el_robot.png")
-            print("Captura de pantalla guardada como lo_que_ve_el_robot.png")
-        finally:
-            await browser.close()
+        # Subimos la imagen
+        foto = genai.upload_file(path_foto)
+        
+        prompt = """
+        Analiza esta imagen de planes de telefonía de WOM Chile.
+        Extrae la información y entrégamela EXCLUSIVAMENTE en una tabla con estas columnas:
+        Empresa | Producto | Atributo Clave (Gigas) | Precio Oferta | Precio Normal | Condición
+        """
+        
+        response = model.generate_content([prompt, foto])
+        
+        print("\n=== BENCHMARK GENERADO POR IA ===")
+        print(response.text)
 
 if __name__ == "__main__":
-    asyncio.run(scraping_wom())
+    asyncio.run(ejecutar_agente_visual())
