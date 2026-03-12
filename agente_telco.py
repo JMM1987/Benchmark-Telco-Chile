@@ -4,28 +4,38 @@ import datetime
 
 async def scraping_wom():
     async with async_playwright() as p:
-        # Abrimos un navegador invisible
+        # Lanzamos el navegador
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        # Nos hacemos pasar por un usuario real para evitar bloqueos
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
         
-        print(f"[{datetime.datetime.now()}] Entrando a WOM Chile...")
+        print(f"[{datetime.datetime.now()}] Iniciando visita a WOM...")
         
-        # Vamos a la página de planes
-        await page.goto("https://www.wom.cl/plan-movil/", wait_until="networkidle")
-        
-        # Buscamos el precio del primer plan que aparezca
-        # Nota: Los 'selectores' (h2, span) pueden cambiar si la web se actualiza
         try:
-            nombre_plan = await page.inner_text("h2") # Título del plan
-            precio = await page.inner_text(".price")  # Clase donde suele estar el precio
+            # Vamos a la sección de planes
+            await page.goto("https://www.wom.cl/planes/", timeout=60000)
             
-            print(f"RESULTADO: {nombre_plan.strip()} a un precio de {precio.strip()}")
+            # Esperamos a que carguen los precios (usamos un selector común en WOM)
+            await page.wait_for_selector(".price", timeout=10000)
+            
+            # Extraemos todos los precios que encuentre en la página
+            precios = await page.locator(".price").all_inner_texts()
+            # Extraemos los nombres de los planes
+            planes = await page.locator("h3").all_inner_texts()
+            
+            print("--- RESULTADOS ENCONTRADOS ---")
+            for plan, precio in zip(planes, precios):
+                print(f"Plan: {plan.strip()} | Precio: {precio.strip()}")
+                
         except Exception as e:
-            print(f"Error al encontrar el dato: {e}")
-            # Si falla, tomamos una foto para ver qué pasó
+            print(f"Ups! Algo falló: {e}")
+            # Guardamos una captura de pantalla si falla (puedes verla en GitHub Actions)
             await page.screenshot(path="error_wom.png")
-
-        await browser.close()
+        finally:
+            await browser.close()
 
 if __name__ == "__main__":
     asyncio.run(scraping_wom())
