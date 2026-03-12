@@ -4,8 +4,9 @@ import google.generativeai as genai
 import os
 import datetime
 
-# Configuración de la IA
+# CONFIGURACIÓN ROBUSTA
 api_key = os.getenv("GEMINI_API_KEY")
+# Forzamos la configuración para evitar el error 404
 genai.configure(api_key=api_key)
 
 async def ejecutar_agente_visual():
@@ -20,10 +21,9 @@ async def ejecutar_agente_visual():
         print(f"[{datetime.datetime.now()}] Accediendo a WOM Portabilidad...")
         
         try:
-            # Usamos domcontentloaded para velocidad
+            # Ir a la página
             await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="domcontentloaded", timeout=60000)
-            
-            print("Esperando 15 segundos para que carguen los precios...")
+            print("Esperando 15 segundos para renderizado...")
             await asyncio.sleep(15) 
             
             path_foto = "captura_wom.png"
@@ -31,37 +31,32 @@ async def ejecutar_agente_visual():
             print("Captura de pantalla realizada con éxito.")
             await browser.close()
 
-            # --- PROCESAMIENTO CON IA (Sintaxis corregida) ---
-            print("Enviando captura a Gemini para análisis detallado...")
+            # --- PROCESAMIENTO CON IA ---
+            print("Enviando captura a Gemini...")
             
-            # Cambiamos a la forma más estable de invocar el modelo
-            model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+            # Subir la imagen
+            sample_file = genai.upload_file(path=path_foto, display_name="Captura WOM")
             
-            # Subimos la imagen
-            foto_ia = genai.upload_file(path=path_foto)
+            # Elegir el modelo (esta sintaxis es la más compatible)
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             prompt = """
-            Analiza esta imagen de la tienda WOM Chile y extrae los datos de los planes de PORTABILIDAD.
-            Necesito una tabla con:
-            1. Plan (Nombre/Gigas)
-            2. Valor Entrada (Precio con descuento)
-            3. Meses de Descuento (Duración de la oferta inicial)
-            4. Valor Aterrizaje (Precio final después del descuento)
-            5. Línea Adicional (Precio entrada, meses y precio final)
-            6. Atributos (Roaming, redes sociales libres, etc.)
+            Analiza esta imagen de WOM Chile y genera una tabla con:
+            Plan | Precio Inicial | Meses Descuento | Precio Final | Adicionales | Atributos
             """
             
-            # Llamada corregida
-            response = model.generate_content([prompt, foto_ia])
+            # Generar contenido
+            response = model.generate_content([prompt, sample_file])
             
             print("\n" + "="*50)
-            print(" RESULTADOS DEL BENCHMARK PROFESIONAL ")
+            print(" RESULTADOS DEL BENCHMARK ")
             print("="*50)
             print(response.text)
             print("="*50)
 
         except Exception as e:
-            print(f"Error detectado durante la ejecución: {e}")
+            # Si hay un error, lo imprimimos detalladamente para saber qué falló
+            print(f"ERROR DETALLADO: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(ejecutar_agente_visual())
