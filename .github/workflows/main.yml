@@ -1,0 +1,22 @@
+name: Ejecutar Monitor de Telcos
+
+on:
+  schedule:
+    # Esto corre a las 08:00, 15:00 y 21:00 UTC (ajusta según tu zona horaria)
+    - cron: '0 9,15,21 * * *'
+  workflow_dispatch: # Esto permite que tú lo corras manualmente cuando quieras
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código del repo
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-python-version: '3.9'
+
+      - name: Ejecutar el agente
+        run: python agente_telco.py
