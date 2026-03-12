@@ -11,46 +11,45 @@ genai.configure(api_key=api_key)
 async def ejecutar_agente_visual():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        # Ventana alta para capturar planes y banners de adicionales abajo
-        context = await browser.new_context(viewport={'width': 1280, 'height': 2000})
+        # Ventana para capturar todo el scroll
+        context = await browser.new_context(
+            viewport={'width': 1280, 'height': 2000},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         page = await context.new_page()
 
         print(f"[{datetime.datetime.now()}] Iniciando captura en WOM Portabilidad...")
         
         try:
-            await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(8) # Tiempo para que carguen los precios dinámicos
+            # Usamos una URL que suele ser más estable para bots
+            await page.goto("https://www.wom.cl/portabilidad/", wait_until="networkidle", timeout=90000)
+            await asyncio.sleep(10) # Tiempo extra para carga de precios
             
             path_foto = "captura_wom.png"
             await page.screenshot(path=path_foto, full_page=True)
             await browser.close()
 
-            # Análisis con Gemini
+            # Análisis con Gemini (Nombre de modelo corregido)
             model = genai.GenerativeModel('gemini-1.5-flash')
-            foto = genai.upload_file(path_foto)
+            
+            # Subir archivo
+            print("Subiendo captura a Gemini...")
+            foto_upload = genai.upload_file(path=path_foto)
             
             prompt = """
-            Analiza esta imagen de WOM Chile. Necesito un benchmark detallado:
-            Para cada plan de portabilidad identifica:
-            1. Nombre del Plan y Gigas.
-            2. Valor de Entrada (Precio inicial).
-            3. Meses de Descuento (¿Cuánto dura el precio inicial?).
-            4. Valor de Aterrizaje (Precio final cuando acaba el descuento).
-            5. Línea Adicional: Precio entrada, meses de descuento y precio de aterrizaje.
-            6. Atributos clave (Apps libres, Roaming, etc).
-            
-            Presenta la información en una tabla clara.
+            Analiza esta imagen de WOM Chile. Extrae los planes de portabilidad en una tabla:
+            Plan | Precio Inicial | Meses Descuento | Precio Final | Adicionales (Precio/Aterrizaje) | Atributos
             """
             
-            response = model.generate_content([prompt, foto])
+            response = model.generate_content([prompt, foto_upload])
             
             print("\n" + "="*40)
-            print(" RESULTADOS DEL BENCHMARK (IA) ")
+            print(" RESULTADOS DEL BENCHMARK ")
             print("="*40)
             print(response.text)
             
         except Exception as e:
-            print(f"Error durante la ejecución: {e}")
+            print(f"Error detectado: {e}")
 
 if __name__ == "__main__":
     asyncio.run(ejecutar_agente_visual())
