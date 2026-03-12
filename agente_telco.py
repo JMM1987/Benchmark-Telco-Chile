@@ -4,9 +4,8 @@ import google.generativeai as genai
 import os
 import datetime
 
-# CONFIGURACIÓN ROBUSTA
+# Configuración técnica
 api_key = os.getenv("GEMINI_API_KEY")
-# Forzamos la configuración para evitar el error 404
 genai.configure(api_key=api_key)
 
 async def ejecutar_agente_visual():
@@ -18,45 +17,36 @@ async def ejecutar_agente_visual():
         )
         page = await context.new_page()
 
-        print(f"[{datetime.datetime.now()}] Accediendo a WOM Portabilidad...")
+        print(f"[{datetime.datetime.now()}] Accediendo a WOM...")
         
         try:
-            # Ir a la página
             await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="domcontentloaded", timeout=60000)
-            print("Esperando 15 segundos para renderizado...")
             await asyncio.sleep(15) 
             
             path_foto = "captura_wom.png"
             await page.screenshot(path=path_foto, full_page=True)
-            print("Captura de pantalla realizada con éxito.")
+            print("Captura de pantalla OK.")
             await browser.close()
 
-            # --- PROCESAMIENTO CON IA ---
-            print("Enviando captura a Gemini...")
+            # --- LLAMADA A LA IA (Sintaxis blindada) ---
+            print("Enviando a Gemini...")
             
-            # Subir la imagen
-            sample_file = genai.upload_file(path=path_foto, display_name="Captura WOM")
+            # Subir archivo
+            file_uploaded = genai.upload_file(path=path_foto)
             
-            # Elegir el modelo (esta sintaxis es la más compatible)
+            # Usamos el identificador de modelo más básico y compatible
             model = genai.GenerativeModel('gemini-1.5-flash')
             
-            prompt = """
-            Analiza esta imagen de WOM Chile y genera una tabla con:
-            Plan | Precio Inicial | Meses Descuento | Precio Final | Adicionales | Atributos
-            """
+            prompt = "Analiza los planes de portabilidad de la imagen y entrégalos en una tabla con Precios y Meses de Descuento."
             
-            # Generar contenido
-            response = model.generate_content([prompt, sample_file])
+            # Forzamos la generación
+            response = model.generate_content([prompt, file_uploaded])
             
-            print("\n" + "="*50)
-            print(" RESULTADOS DEL BENCHMARK ")
-            print("="*50)
+            print("\n=== RESULTADOS ===")
             print(response.text)
-            print("="*50)
 
         except Exception as e:
-            # Si hay un error, lo imprimimos detalladamente para saber qué falló
-            print(f"ERROR DETALLADO: {str(e)}")
+            print(f"ERROR: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(ejecutar_agente_visual())
