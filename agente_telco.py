@@ -1,58 +1,51 @@
 import asyncio
 from playwright.async_api import async_playwright
 from google import genai
-from google.genai import types # Importamos los tipos para evitar errores de validación
-os_import = __import__('os') # Forma segura de usar os
+from google.genai import types
+import os
 
-async def ejecutar_agente_visual():
+async def ejecutar():
     async with async_playwright() as p:
+        # 1. Navegación y captura (Esto ya es sólido)
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 2500}
-        )
-        page = await context.new_page()
-
-        print("Accediendo a WOM...")
+        page = await browser.new_page(viewport={'width': 1280, 'height': 2500})
+        
+        print("1. Capturando WOM...")
         try:
             await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(15) 
-            
-            path_foto = "captura_wom.png"
-            await page.screenshot(path=path_foto, full_page=True)
-            print("Captura de pantalla OK.")
+            await page.screenshot(path="wom.png", full_page=True)
             await browser.close()
 
-            print("Conectando con el nuevo SDK de Google...")
-            client = genai.Client(api_key=os_import.getenv("GEMINI_API_KEY"))
+            print("2. Conectando a Gemini v1 (Estable)...")
+            # FORZAMOS LA VERSIÓN V1 PARA EVITAR EL 404 DE LA BETA
+            client = genai.Client(
+                api_key=os.environ["GEMINI_API_KEY"],
+                http_options={'api_version': 'v1'}
+            )
             
-            with open(path_foto, "rb") as f:
-                bytes_imagen = f.read()
+            with open("wom.png", "rb") as f:
+                img_data = f.read()
 
-            print("Analizando con Gemini 1.5 Flash...")
-            
-            # SINTAXIS CORREGIDA: Usamos tipos explícitos para que Pydantic no se queje
+            # Estructura de mensaje blindada
             response = client.models.generate_content(
                 model="gemini-1.5-flash",
                 contents=[
                     types.Content(
                         role="user",
                         parts=[
-                            types.Part.from_text(text="Analiza esta imagen de WOM Chile. Extrae los planes de portabilidad en una tabla: Plan, Precio Oferta, Meses de Descuento y Precio Final."),
-                            types.Part.from_bytes(data=bytes_imagen, mime_type="image/png")
+                            types.Part.from_text(text="Analiza la imagen y extrae los planes de portabilidad en una tabla."),
+                            types.Part.from_bytes(data=img_data, mime_type="image/png")
                         ]
                     )
                 ]
             )
-            
-            print("\n" + "="*50)
-            print(" RESULTADO DEL BENCHMARK ")
-            print("="*50)
+
+            print("\n=== RESULTADO ===\n")
             print(response.text)
-            print("="*50)
 
         except Exception as e:
-            print(f"ERROR TÉCNICO: {str(e)}")
+            print(f"ERROR FINAL: {str(e)}")
 
 if __name__ == "__main__":
-    asyncio.run(ejecutar_agente_visual())
+    asyncio.run(ejecutar())
