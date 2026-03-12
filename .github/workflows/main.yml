@@ -1,26 +1,26 @@
 name: Monitor Telco IA
 
 on:
-  workflow_dispatch: # Para que tú le des al botón manual
+  workflow_dispatch: # Botón manual en la pestaña Actions
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar código
+      - name: Descargar el código del repositorio
         uses: actions/checkout@v3
 
-      - name: Configurar Python
+      - name: Configurar versión de Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Instalar Dependencias
+      - name: Instalar herramientas necesarias
         run: |
           pip install playwright google-generativeai
           playwright install chromium
 
-      - name: Ejecutar el agente
+      - name: Ejecutar el agente de monitoreo
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python agente_telco.py
