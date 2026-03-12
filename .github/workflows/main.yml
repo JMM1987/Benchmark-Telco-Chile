@@ -1,16 +1,13 @@
-name: Ejecutar Monitor de Telcos con IA
+name: Monitor Telco IA
 
 on:
-  schedule:
-    # Esto corre el robot a las 09:00, 15:00 y 21:00 UTC
-    - cron: '0 9,15,21 * * *'
-  workflow_dispatch: # Esto permite que tú le des al botón "Run Workflow" manualmente
+  workflow_dispatch: # Para que tú le des al botón manual
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar código del repo
+      - name: Descargar código
         uses: actions/checkout@v3
 
       - name: Configurar Python
@@ -18,13 +15,12 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Instalar Playwright y dependencias de IA
+      - name: Instalar Dependencias
         run: |
           pip install playwright google-generativeai
           playwright install chromium
 
-      - name: Ejecutar el agente visual
+      - name: Ejecutar el agente
         env:
-          # Aquí es donde GitHub saca tu clave de la "caja fuerte" (Secrets)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python agente_telco.py
