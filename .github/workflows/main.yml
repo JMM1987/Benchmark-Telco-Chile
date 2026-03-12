@@ -1,26 +1,33 @@
 name: Monitor Telco IA
 
+# Controla cuándo se ejecuta el robot
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la pestaña Actions
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
+      # 1. Descarga tu código de GitHub a la máquina virtual
       - name: Descargar el código
         uses: actions/checkout@v3
 
+      # 2. Prepara el entorno de Python (Versión estable 3.11)
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      # 3. Instala las librerías necesarias
+      # El parámetro -U es CLAVE para que no use versiones viejas de la IA
       - name: Instalar herramientas
         run: |
-          pip install --upgrade pip
-          pip install playwright google-generativeai==0.8.3
+          pip install -U pip
+          pip install -U google-generativeai playwright
           playwright install chromium
 
+      # 4. Ejecuta el agente pasando la API KEY de forma segura
       - name: Ejecutar el agente
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
