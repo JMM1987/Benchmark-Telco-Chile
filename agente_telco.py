@@ -17,68 +17,74 @@ async def analizar_operador(browser, sitio, client):
     page = await browser.new_page(viewport={'width': 1920, 'height': 1200})
     
     try:
-        await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"})
         await page.goto(sitio['url'], wait_until="networkidle", timeout=90000)
         
         if sitio['nombre'] == "CLARO":
             try:
+                # Resolvemos el problema de la pestaña detectado anteriormente
                 await page.get_by_role("tab", name="Líneas Adicionales").click()
-                await asyncio.sleep(8) 
+                await asyncio.sleep(5) 
             except: pass
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         path_foto = f"{sitio['nombre'].lower()}.png"
         await page.screenshot(path=path_foto)
         
         with open(path_foto, "rb") as f:
             img_data = f.read()
 
-        prompt = f"""
-        Analiza la imagen de {sitio['nombre']}.
-        Extrae los datos de portabilidad y genera UNICAMENTE las filas de una tabla usando el separador '|'.
-        Formato: {sitio['nombre']}|Nombre del Plan|Precio Oferta|Precio Normal|Detalle Adicional
-        """
+        prompt = f"Extrae los planes de {sitio['nombre']} en formato CSV usando '|'. Solo datos: Operador|Plan|Precio Oferta|Precio Normal|Línea Adicional"
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash", # Actualizado según tus modelos detectados
-            contents=[types.Part.from_bytes(data=img_data, mime_type="image/png"), prompt]
-        )
-        
-        # Validación de respuesta para evitar el AttributeError
-        return response.text if response and response.text else ""
+        # Implementamos un reintento simple si falla por cuota
+        for intento in range(3):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash", # Modelo detectado en tus logs
+                    contents=[types.Part.from_bytes(data=img_data, mime_type="image/png"), prompt]
+                )
+                return response.text if response.text else ""
+            except Exception as e:
+                if "429" in str(e):
+                    espera = (intento + 1) * 20
+                    print(f"⚠️ Cuota excedida para {sitio['nombre']}. Reintentando en {espera}s...")
+                    await asyncio.sleep(espera)
+                else:
+                    raise e
+        return ""
 
     except Exception as e:
-        print(f"Error en {sitio['nombre']}: {e}")
+        print(f"❌ Error final en {sitio['nombre']}: {e}")
         return ""
     finally:
         await page.close()
 
 async def ejecutar_benchmark():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch()
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
 
         todas_las_filas = []
         for sitio in SITIOS:
             resultado_raw = await analizar_operador(browser, sitio, client)
             
-            # Verificación de seguridad antes de usar .split()
+            # Validación para evitar el AttributeError: 'NoneType' detectado
             if resultado_raw:
                 filas = [f.strip().split('|') for f in resultado_raw.split('\n') if '|' in f and 'Operador' not in f]
                 todas_las_filas.extend(filas)
-        
+            
+            # Pausa obligatoria de 30 segundos entre sitios para resetear la cuota TPM
+            print("Pausando 30s para respetar límites de API...")
+            await asyncio.sleep(30)
+
         await browser.close()
 
-        # Generación del archivo CSV
-        archivo_csv = "benchmark_telco.csv"
-        encabezados = ["Operador", "Plan", "Precio Oferta", "Precio Normal", "Línea Adicional"]
-        
-        with open(archivo_csv, mode='w', newline='', encoding='utf-8-sig') as f:
-            escritor = csv.writer(f)
-            escritor.writerow(encabezados)
-            escritor.writerows(todas_las_filas)
+        # Generación del archivo CSV consolidado
+        with open('benchmark_planes.csv', 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Operador", "Plan", "Precio Oferta", "Precio Normal", "Línea Adicional"])
+            writer.writerows(todas_las_filas)
 
-        print(f"\n✅ Archivo '{archivo_csv}' generado con {len(todas_las_filas)} planes.")
+        print(f"\n✅ Proceso completado. Archivo 'benchmark_planes.csv' generado.")
 
 if __name__ == "__main__":
     asyncio.run(ejecutar_benchmark())
