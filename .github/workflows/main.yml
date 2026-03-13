@@ -1,4 +1,4 @@
-name: Monitor Telco IA - Test Pro
+name: Monitor Telco Gemini 2.5
 
 on:
   workflow_dispatch:
@@ -14,11 +14,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalación Limpia
+      - name: Instalación de Dependencias
         run: |
           pip install --upgrade pip
-          # Eliminamos cualquier rastro de la librería vieja para que no choque con la nueva
-          pip uninstall google-generativeai -y 
+          pip uninstall google-generativeai -y
           pip install -U google-genai playwright
           playwright install chromium
 
