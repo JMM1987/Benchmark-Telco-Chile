@@ -1,5 +1,7 @@
 import asyncio
 import os
+import csv
+import re
 from playwright.async_api import async_playwright
 from google import genai
 from google.genai import types
@@ -12,52 +14,46 @@ SITIOS = [
 ]
 
 async def analizar_operador(browser, sitio, client):
-    print(f"\n--- Procesando {sitio['nombre']} ---")
+    print(f"--- Procesando {sitio['nombre']} ---")
     page = await browser.new_page(viewport={'width': 1920, 'height': 1200})
     
     try:
-        # User-Agent para evitar ser bloqueados
-        await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
-        
+        await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"})
         await page.goto(sitio['url'], wait_until="networkidle", timeout=90000)
         
-        # Lógica especial para las pestañas de CLARO
         if sitio['nombre'] == "CLARO":
             try:
-                print("Cambiando a pestaña 'Líneas Adicionales' en Claro...")
                 await page.get_by_role("tab", name="Líneas Adicionales").click()
                 await asyncio.sleep(8) 
-            except:
-                print("No se pudo hacer clic en la pestaña, intentando captura directa.")
+            except: pass
 
-        await asyncio.sleep(10) # Espera para que carguen los precios dinámicos
-        
+        await asyncio.sleep(10)
         path_foto = f"{sitio['nombre'].lower()}.png"
-        await page.screenshot(path=path_foto, full_page=False)
+        await page.screenshot(path=path_foto)
         
         with open(path_foto, "rb") as f:
             img_data = f.read()
 
+        # Prompt optimizado para que la IA devuelva solo las filas de datos
         prompt = f"""
         Analiza la imagen de {sitio['nombre']}.
-        Extrae los planes de portabilidad y sus líneas adicionales en una tabla Markdown.
-        COLUMNAS: Operador (siempre '{sitio['nombre']}'), Plan, Precio Oferta, Precio Normal, Línea Adicional (Precio/Dcto).
-        Si un dato no es visible, pon 'N/A'.
+        Extrae los datos de portabilidad y genera UNICAMENTE las filas de una tabla CSV usando el separador '|'.
+        Formato: {sitio['nombre']}|Nombre del Plan|Precio Oferta|Precio Normal|Detalle Adicional
+        No incluyas encabezados ni texto explicativo. Solo las filas de datos.
         """
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash", # Confirmado en tus logs anteriores
-            contents=[
-                types.Content(role="user", parts=[
-                    types.Part.from_text(text=prompt),
-                    types.Part.from_bytes(data=img_data, mime_type="image/png")
-                ])
-            ]
+            model="gemini-2.5-flash",
+            contents=[types.Content(role="user", parts=[
+                types.Part.from_text(text=prompt),
+                types.Part.from_bytes(data=img_data, mime_type="image/png")
+            ])]
         )
         return response.text
 
     except Exception as e:
-        return f"Error en {sitio['nombre']}: {str(e)}"
+        print(f"Error en {sitio['nombre']}: {e}")
+        return ""
     finally:
         await page.close()
 
@@ -66,16 +62,25 @@ async def ejecutar_benchmark():
         browser = await p.chromium.launch(headless=True)
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
 
-        resultados = []
+        todas_las_filas = []
         for sitio in SITIOS:
-            res = await analizar_operador(browser, sitio, client)
-            resultados.append(res)
+            resultado_raw = await analizar_operador(browser, sitio, client)
+            # Limpiamos el output de la IA para obtener solo las líneas con datos
+            filas = [f.strip().split('|') for f in resultado_raw.split('\n') if '|' in f and 'Operador' not in f]
+            todas_las_filas.extend(filas)
         
         await browser.close()
-        print("\n" + "="*60 + "\n   REPORTE CONSOLIDADO FINAL\n" + "="*60)
-        for r in resultados:
-            print(r)
+
+        # Guardar en archivo CSV
+        archivo_csv = "benchmark_telco.csv"
+        encabezados = ["Operador", "Plan", "Precio Oferta", "Precio Normal", "Línea Adicional"]
+        
+        with open(archivo_csv, mode='w', newline='', encoding='utf-8') as f:
+            escritor = csv.writer(f)
+            escritor.writerow(encabezados)
+            escritor.writerows(todas_las_filas)
+
+        print(f"\n✅ Proceso terminado. Archivo '{archivo_csv}' generado con {len(todas_las_filas)} planes.")
 
 if __name__ == "__main__":
-    # CORRECCIÓN CLAVE: El nombre de la función debe coincidir
     asyncio.run(ejecutar_benchmark())
