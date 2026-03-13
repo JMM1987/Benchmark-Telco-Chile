@@ -1,60 +1,64 @@
 import asyncio
-import os
 from playwright.async_api import async_playwright
 from google import genai
 from google.genai import types
+import os
 
 async def ejecutar():
     async with async_playwright() as p:
-        # 1. Configuración de Navegador y Captura
-        print("1. Iniciando navegador y capturando WOM...")
+        # 1. Captura (Sin cambios, ya que funciona)
         browser = await p.chromium.launch(headless=True)
-        # Seteamos un user-agent real para evitar bloqueos
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-        await page.set_viewport_size({'width': 1280, 'height': 2000})
+        page = await browser.new_page(viewport={'width': 1280, 'height': 2500})
         
+        print("1. Capturando WOM...")
         try:
-            # Vamos a la URL
-            await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="networkidle", timeout=90000)
-            
-            # Espera extra para asegurar que carguen los elementos dinámicos
-            await asyncio.sleep(10) 
-            
-            # Guardamos la captura
+            await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="domcontentloaded")
+            await asyncio.sleep(12) 
             await page.screenshot(path="wom.png", full_page=True)
-            print("Captura guardada como wom.png")
             await browser.close()
 
-            # 2. Conexión a Gemini 1.5 Flash
-            print("2. Conectando a Gemini 1.5 Flash...")
-            
-            # Inicializamos el cliente sin forzar api_version (deja que la librería decida)
-            client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-            
-            # Leemos la imagen
+            print("2. Configurando Cliente (v1 estable)...")
+            client = genai.Client(
+                api_key=os.environ["GEMINI_API_KEY"],
+                http_options={'api_version': 'v1'}
+            )
+
+            # --- BLOQUE DE DIAGNÓSTICO ---
+            print("Verificando modelos disponibles para tu cuenta...")
+            modelos_validos = []
+            for m in client.models.list():
+                modelos_validos.append(m.name)
+            print(f"Modelos detectados: {modelos_validos}")
+            # -----------------------------
+
             with open("wom.png", "rb") as f:
                 img_data = f.read()
 
-            # Llamada al modelo con el nombre completo para evitar 404
+            # PROBAMOS CON EL MODELO PRO (Más robusto)
+            modelo_a_usar = "gemini-1.5-pro" 
+            print(f"3. Intentando análisis con: {modelo_a_usar}")
+            
             response = client.models.generate_content(
-                model="models/gemini-1.5-flash",
+                model=modelo_a_usar,
                 contents=[
-                    types.Part.from_text(text="Analiza esta imagen de planes de telefonía de WOM Chile. Extrae todos los planes disponibles y estructúralos en una tabla de Markdown que incluya: Nombre del plan, Gigas, Precio y si incluye redes sociales libres."),
-                    types.Part.from_bytes(data=img_data, mime_type="image/png")
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text="Extrae los planes de portabilidad en una tabla: Plan, Precio, y Meses de Descuento."),
+                            types.Part.from_bytes(data=img_data, mime_type="image/png")
+                        ]
+                    )
                 ]
             )
 
-            print("\n=== DATOS EXTRAÍDOS ===\n")
-            if response.text:
-                print(response.text)
-            else:
-                print("No se pudo generar texto de la imagen.")
+            print("\n=== RESULTADO DEL MODELO PRO ===\n")
+            print(response.text)
 
         except Exception as e:
-            print(f"ERROR DURANTE LA EJECUCIÓN: {str(e)}")
+            print(f"\n¡ALERTA! El error persiste: {str(e)}")
+            print("Si el error es 404, revisa la lista de 'Modelos detectados' más arriba para ver cuál podemos usar.")
 
+if __name__ == "__main__":
+    asyncio.run(ejecutar())
 if __name__ == "__main__":
     asyncio.run(ejecutar())
