@@ -1,21 +1,29 @@
 name: Monitor Telco IA
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4 # Actualizado a v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5 # Actualizado a v5
         with:
           python-version: '3.11'
+
       - name: Instalar Herramientas
         run: |
-          pip install --upgrade pip
-          pip uninstall google-generativeai -y
+          pip install -U pip
+          # Eliminamos versiones viejas para evitar conflictos de nombres
+          pip uninstall google-generativeai -y 
+          # Instalamos la nueva librería y playwright
           pip install -U google-genai playwright
-          playwright install chromium
-      - name: Ejecutar
+          # ESTO ES CLAVE: Instala el navegador Y sus dependencias de sistema
+          npx playwright install --with-deps chromium
+
+      - name: Ejecutar Agente
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python agente_telco.py
