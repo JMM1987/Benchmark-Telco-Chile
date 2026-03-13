@@ -6,19 +6,18 @@ from google.genai import types
 
 async def ejecutar():
     async with async_playwright() as p:
-        print("1. Iniciando navegador (Full HD) y capturando WOM...")
-        # Aumentamos el ancho para que los 4 planes respiren y se vean claros
+        print("1. Capturando WOM con foco en detalles inferiores...")
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
+        # Usamos una altura mayor (1200) para asegurar que el pie de página de los planes sea visible
+        page = await browser.new_page(viewport={'width': 1920, 'height': 1200})
         
         try:
             await page.goto("https://store.wom.cl/planes/planes-portabilidad", wait_until="networkidle", timeout=60000)
             await asyncio.sleep(15) 
             
-            path_foto = "wom_full.png"
-            await page.screenshot(path=path_foto, full_page=False) # Captura lo que se ve en pantalla
+            path_foto = "wom_completo.png"
+            await page.screenshot(path=path_foto)
             await browser.close()
-            print("Captura panorámica guardada.")
 
             client = genai.Client(
                 api_key=os.environ["GEMINI_API_KEY"],
@@ -29,22 +28,19 @@ async def ejecutar():
                 img_data = f.read()
 
             modelo_confirmado = "gemini-2.5-flash"
-            print(f"2. Analizando con {modelo_confirmado} (Prompt Estricto)...")
+            print(f"2. Analizando Planes + Líneas Adicionales con {modelo_confirmado}...")
 
-            # PROMPT REFORZADO: Obligamos a contar y a no omitir nada
-            prompt_estricto = """
-            Analiza la imagen minuciosamente de izquierda a derecha. 
-            Debes extraer los CUATRO (4) planes de portabilidad que aparecen en la parrilla principal. 
-            No omitas ninguno, especialmente los de los extremos.
+            # PROMPT ULTRA-DETALLADO
+            prompt_final = """
+            Analiza la imagen y extrae la información de los 4 planes de portabilidad.
+            Para cada plan, debes capturar DOS niveles de información:
             
-            Para cada plan, entrega:
-            - Nombre exacto del Plan.
-            - Precio Oferta (el más grande).
-            - Precio Normal (el que aparece después de 'luego').
-            - Meses de Descuento.
-            - Beneficios extra (Apps, Roaming, etc.).
+            1. NIVEL PLAN PRINCIPAL: Nombre, Precio Oferta, Precio Normal y Beneficios.
+            2. NIVEL LÍNEAS ADICIONALES: Justo debajo de cada plan hay un recuadro blanco que dice 'Suma líneas adicionales'. Extrae el precio por línea, el porcentaje de descuento y el precio normal que aparece ahí.
             
-            Presenta todo en una tabla Markdown limpia.
+            Formato de salida requerido (Tabla):
+            | Plan | Precio Portabilidad | Línea Adicional (Precio/Dcto) | Precio Normal Adicional |
+            | :--- | :--- | :--- | :--- |
             """
 
             response = client.models.generate_content(
@@ -53,16 +49,16 @@ async def ejecutar():
                     types.Content(
                         role="user",
                         parts=[
-                            types.Part.from_text(text=prompt_estricto),
+                            types.Part.from_text(text=prompt_final),
                             types.Part.from_bytes(data=img_data, mime_type="image/png")
                         ]
                     )
                 ]
             )
 
-            print("\n" + "="*40)
-            print("   BENCHMARK COMPLETO (4 PLANES)")
-            print("="*40 + "\n")
+            print("\n" + "="*50)
+            print("   BENCHMARK WOM: PLANES + ADICIONALES")
+            print("="*50 + "\n")
             print(response.text)
 
         except Exception as e:
