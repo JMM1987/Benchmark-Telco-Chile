@@ -1,7 +1,6 @@
 import asyncio
 import os
 import csv
-import re
 from playwright.async_api import async_playwright
 from google import genai
 from google.genai import types
@@ -34,22 +33,19 @@ async def analizar_operador(browser, sitio, client):
         with open(path_foto, "rb") as f:
             img_data = f.read()
 
-        # Prompt optimizado para que la IA devuelva solo las filas de datos
         prompt = f"""
         Analiza la imagen de {sitio['nombre']}.
-        Extrae los datos de portabilidad y genera UNICAMENTE las filas de una tabla CSV usando el separador '|'.
+        Extrae los datos de portabilidad y genera UNICAMENTE las filas de una tabla usando el separador '|'.
         Formato: {sitio['nombre']}|Nombre del Plan|Precio Oferta|Precio Normal|Detalle Adicional
-        No incluyas encabezados ni texto explicativo. Solo las filas de datos.
         """
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[types.Content(role="user", parts=[
-                types.Part.from_text(text=prompt),
-                types.Part.from_bytes(data=img_data, mime_type="image/png")
-            ])]
+            model="gemini-2.0-flash", # Actualizado según tus modelos detectados
+            contents=[types.Part.from_bytes(data=img_data, mime_type="image/png"), prompt]
         )
-        return response.text
+        
+        # Validación de respuesta para evitar el AttributeError
+        return response.text if response and response.text else ""
 
     except Exception as e:
         print(f"Error en {sitio['nombre']}: {e}")
@@ -65,22 +61,24 @@ async def ejecutar_benchmark():
         todas_las_filas = []
         for sitio in SITIOS:
             resultado_raw = await analizar_operador(browser, sitio, client)
-            # Limpiamos el output de la IA para obtener solo las líneas con datos
-            filas = [f.strip().split('|') for f in resultado_raw.split('\n') if '|' in f and 'Operador' not in f]
-            todas_las_filas.extend(filas)
+            
+            # Verificación de seguridad antes de usar .split()
+            if resultado_raw:
+                filas = [f.strip().split('|') for f in resultado_raw.split('\n') if '|' in f and 'Operador' not in f]
+                todas_las_filas.extend(filas)
         
         await browser.close()
 
-        # Guardar en archivo CSV
+        # Generación del archivo CSV
         archivo_csv = "benchmark_telco.csv"
         encabezados = ["Operador", "Plan", "Precio Oferta", "Precio Normal", "Línea Adicional"]
         
-        with open(archivo_csv, mode='w', newline='', encoding='utf-8') as f:
+        with open(archivo_csv, mode='w', newline='', encoding='utf-8-sig') as f:
             escritor = csv.writer(f)
             escritor.writerow(encabezados)
             escritor.writerows(todas_las_filas)
 
-        print(f"\n✅ Proceso terminado. Archivo '{archivo_csv}' generado con {len(todas_las_filas)} planes.")
+        print(f"\n✅ Archivo '{archivo_csv}' generado con {len(todas_las_filas)} planes.")
 
 if __name__ == "__main__":
     asyncio.run(ejecutar_benchmark())
